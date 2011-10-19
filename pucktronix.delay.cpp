@@ -22,14 +22,18 @@ AudioEffect* createEffectInstance (audioMasterCallback audioMaster)
 PDelay::PDelay (audioMasterCallback audioMaster)
 : AudioEffectX (audioMaster, 1, 1)	// 1 program, 1 parameter only
 {
-	setNumInputs (2);		// stereo in
-	setNumOutputs (2);		// stereo out
+	setNumInputs (1);		// stereo in
+	setNumOutputs (1);		// stereo out
 	setUniqueID ('ptdl');	// identify
 	canProcessReplacing ();	// supports replacing output
 	canDoubleReplacing ();	// supports double precision processing
 
 	fGain = 1.f;			// default to 0 dB
 	vst_strncpy (programName, "Default", kVstMaxProgNameLen);	// default program name
+	SR = getSampleRate();
+	if (SR == 0) SR = 44100;
+	delayBuffer = new float[2 * SR];
+	index = 0;
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -111,29 +115,55 @@ VstInt32 PDelay::getVendorVersion ()
 void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleFrames)
 {
     float* in1  =  inputs[0];
-    float* in2  =  inputs[1];
+ //   float* in2  =  inputs[1];
     float* out1 = outputs[0];
-    float* out2 = outputs[1];
-
-    while (--sampleFrames >= 0)
+ //   float* out2 = outputs[1];
+	
+	int delayTime;
+	float out;
+	delayTime = (int)(0.5 * SR);
+	
+	for(int i = 0; i < sampleFrames; i++){
+		out = delayBuffer[index];
+		delayBuffer[index] = in1[i];
+		(*out1++) = (out + in1[i]) * 0.5;
+		if(index != delayTime - 1){
+			index++;
+		} else {
+			index = 0;
+		}
+	}
+/*    
+	while (--sampleFrames >= 0)
     {
         (*out1++) = (*in1++) * fGain;
         (*out2++) = (*in2++) * fGain;
     }
+ */
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::processDoubleReplacing (double** inputs, double** outputs, VstInt32 sampleFrames)
 {
     double* in1  =  inputs[0];
-    double* in2  =  inputs[1];
+   // double* in2  =  inputs[1];
     double* out1 = outputs[0];
-    double* out2 = outputs[1];
-	double dGain = fGain;
-
+   // double* out2 = outputs[1];
+	int delayTime;
+	double out;
+	delayTime = (int)(0.5 * SR);
+	
+	for(int i = 0; i < sampleFrames; i++){
+		out = delayBuffer[index];
+		delayBuffer[index] = in1[i];
+		(*out1++) = (out + in1[i]) * 0.5;
+		index = index != delayTime - 1 ? index++ : 0;
+	}
+/*
     while (--sampleFrames >= 0)
     {
         (*out1++) = (*in1++) * dGain;
         (*out2++) = (*in2++) * dGain;
     }
+ */
 }

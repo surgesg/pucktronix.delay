@@ -45,6 +45,9 @@ public:
 protected:
 	float fGain;
 	char programName[kVstMaxProgNameLen + 1];
+	float * delayBuffer;
+	int index; 
+	int SR;
 };
 
 #endif
