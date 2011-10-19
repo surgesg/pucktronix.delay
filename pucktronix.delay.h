@@ -44,6 +44,7 @@ public:
 
 protected:
 	float delayTimeSeconds;
+	float endDelayTimeSeconds;
 	char programName[kVstMaxProgNameLen + 1];
 	float * delayBuffer;
 	int index; 

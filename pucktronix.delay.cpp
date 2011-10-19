@@ -41,12 +41,14 @@ PDelay::PDelay (audioMasterCallback audioMaster)
 	delayBuffer = new float[2 * SR];
 	index = 0;
 	delayTimeSeconds = 0.5;
+	endDelayTimeSeconds = 0.5;
 }
 
 //-------------------------------------------------------------------------------------------------------
 PDelay::~PDelay ()
 {
 	// nothing to do here
+	delete [] delayBuffer;
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -64,7 +66,7 @@ void PDelay::getProgramName (char* name)
 //-----------------------------------------------------------------------------------------
 void PDelay::setParameter (VstInt32 index, float value)
 {
-	delayTimeSeconds = value * 2;
+	endDelayTimeSeconds = value * 2;
 }
 
 //-----------------------------------------------------------------------------------------
@@ -127,15 +129,23 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
  //   float* out2 = outputs[1];
 	
 	int maxDelayTime, readPointerInt;
-	float out, readPointerFloat, variableDelayTime, frac, next;
+	float out, readPointerFloat, variableDelayTime, frac, next, variableEndDelayTime, delayTimeIncrement;
 	
 	variableDelayTime = delayTimeSeconds * SR; 
+	variableEndDelayTime = endDelayTimeSeconds * SR;
+	if(variableDelayTime != variableEndDelayTime){
+		delayTimeIncrement = (variableEndDelayTime - variableDelayTime) / sampleFrames;
+	} else {
+		delayTimeIncrement = 0;
+	}
 	maxDelayTime = (int)(2 * SR);
 
 	if(variableDelayTime > maxDelayTime) variableDelayTime = (float)maxDelayTime; // make sure delay time not too large for buffer
-		
+
 	for(int i = 0; i < sampleFrames; i++){
 		readPointerFloat = index - variableDelayTime; // offset read pointer from write pointer
+		variableDelayTime += delayTimeIncrement;
+		if(variableDelayTime > maxDelayTime) variableDelayTime = (float)maxDelayTime; // make sure delay time not too large for buffer
 	
 		if(readPointerFloat >= 0){
 			if(readPointerFloat >= maxDelayTime){ // wrap around if pointer is out of bounds
@@ -163,7 +173,7 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 			index = 0;
 		}
 	}
-
+	delayTimeSeconds = endDelayTimeSeconds;
 }
 
 //-----------------------------------------------------------------------------------------
