@@ -43,7 +43,7 @@ public:
 	virtual VstInt32 getVendorVersion ();
 
 protected:
-	float fGain;
+	float delayTimeSeconds;
 	char programName[kVstMaxProgNameLen + 1];
 	float * delayBuffer;
 	int index; 

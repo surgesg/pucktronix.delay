@@ -12,6 +12,13 @@
 
 #include "pucktronix.delay.h"
 
+/*
+	todo:
+	variable delay time - interpolation (using two variables)
+	feedback filter
+	feedback saturation
+*/
+
 //-------------------------------------------------------------------------------------------------------
 AudioEffect* createEffectInstance (audioMasterCallback audioMaster)
 {
@@ -28,12 +35,12 @@ PDelay::PDelay (audioMasterCallback audioMaster)
 	canProcessReplacing ();	// supports replacing output
 	canDoubleReplacing ();	// supports double precision processing
 
-	fGain = 1.f;			// default to 0 dB
 	vst_strncpy (programName, "Default", kVstMaxProgNameLen);	// default program name
 	SR = getSampleRate();
 	if (SR == 0) SR = 44100;
 	delayBuffer = new float[2 * SR];
 	index = 0;
+	delayTimeSeconds = 0.5;
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -57,37 +64,37 @@ void PDelay::getProgramName (char* name)
 //-----------------------------------------------------------------------------------------
 void PDelay::setParameter (VstInt32 index, float value)
 {
-	fGain = value;
+	delayTimeSeconds = value * 2;
 }
 
 //-----------------------------------------------------------------------------------------
 float PDelay::getParameter (VstInt32 index)
 {
-	return fGain;
+	return delayTimeSeconds * 0.5;
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::getParameterName (VstInt32 index, char* label)
 {
-	vst_strncpy (label, "Gain", kVstMaxParamStrLen);
+	vst_strncpy (label, "Delay Time", kVstMaxParamStrLen);
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::getParameterDisplay (VstInt32 index, char* text)
 {
-	dB2string (fGain, text, kVstMaxParamStrLen);
+	float2string(delayTimeSeconds * 1000, text, kVstMaxParamStrLen);
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::getParameterLabel (VstInt32 index, char* label)
 {
-	vst_strncpy (label, "dB", kVstMaxParamStrLen);
+	vst_strncpy (label, "ms", kVstMaxParamStrLen);
 }
 
 //------------------------------------------------------------------------
 bool PDelay::getEffectName (char* name)
 {
-	vst_strncpy (name, "Gain", kVstMaxEffectNameLen);
+	vst_strncpy (name, "pucktronix.delay", kVstMaxEffectNameLen);
 	return true;
 }
 
@@ -119,27 +126,44 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
     float* out1 = outputs[0];
  //   float* out2 = outputs[1];
 	
-	int delayTime;
-	float out;
-	delayTime = (int)(0.5 * SR);
+	int maxDelayTime, readPointerInt;
+	float out, readPointerFloat, variableDelayTime, frac, next;
 	
+	variableDelayTime = delayTimeSeconds * SR; 
+	maxDelayTime = (int)(2 * SR);
+
+	if(variableDelayTime > maxDelayTime) variableDelayTime = (float)maxDelayTime; // make sure delay time not too large for buffer
+		
 	for(int i = 0; i < sampleFrames; i++){
-		out = delayBuffer[index];
-		delayBuffer[index] = in1[i];
-		(*out1++) = (out + in1[i]) * 0.5;
-		if(index != delayTime - 1){
+		readPointerFloat = index - variableDelayTime; // offset read pointer from write pointer
+	
+		if(readPointerFloat >= 0){
+			if(readPointerFloat >= maxDelayTime){ // wrap around if pointer is out of bounds
+				readPointerFloat -= maxDelayTime;
+			}
+		} else { // otherwise increment
+			readPointerFloat += maxDelayTime;
+		}
+		
+		readPointerInt = (int)readPointerFloat;
+		frac = readPointerFloat - readPointerInt; // get fractional portion of sample index
+		
+		if(readPointerInt != maxDelayTime - 1){ // check read pointer for bounds and wrap
+			next = delayBuffer[readPointerInt + 1];
+		} else {
+			next = delayBuffer[0];
+		}
+		
+		out = delayBuffer[readPointerInt] + frac * (next - delayBuffer[readPointerInt]); // output interpolated value from delay line
+		delayBuffer[index] = in1[i] + out * 0.5; // write new sample to delay buff, mix in feedbackk
+		(*out1++) = (out + in1[i]) * 0.5; // write to output buffer
+		if(index != maxDelayTime - 1){ // wrap write pointer if needed
 			index++;
 		} else {
 			index = 0;
 		}
 	}
-/*    
-	while (--sampleFrames >= 0)
-    {
-        (*out1++) = (*in1++) * fGain;
-        (*out2++) = (*in2++) * fGain;
-    }
- */
+
 }
 
 //-----------------------------------------------------------------------------------------
