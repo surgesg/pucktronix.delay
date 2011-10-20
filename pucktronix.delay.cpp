@@ -133,7 +133,7 @@ void PDelay::getParameterDisplay (VstInt32 index, char* text)
 			float2string(delayTimeSeconds * 1000, text, kVstMaxParamStrLen);
 			break;
 		case kFeedBack:
-			float2string(feedbackParam, text, kVstMaxParamStrLen);
+			float2string(feedbackParam * 1.25 , text, kVstMaxParamStrLen);
 			break;
 		case kFCutoff:
 			float2string(cutoffParam * 20000, text, kVstMaxParamStrLen);
@@ -188,10 +188,6 @@ VstInt32 PDelay::getVendorVersion ()
 	return 1000; 
 }
 
-float PDelay::filter(float * sig){
-		
-}
-
 //-----------------------------------------------------------------------------------------
 void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -204,6 +200,7 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 	float out, filtered, readPointerFloat, variableDelayTime, frac, next, variableEndDelayTime, delayTimeIncrement;
 	float a0, a1, b1, w, Norm, cutoff;
 	float feedback;
+	float clipped;
 	
 	feedback = feedbackParam;
 	
@@ -250,14 +247,23 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 		
 		/** output and feedback code **/
 		out = delayBuffer[readPointerInt] + frac * (next - delayBuffer[readPointerInt]); // output interpolated value from delay line
-		// filter 
-
 		
+		// filter 
 		filtered = out * a0 + X1 * a1 + Y1 * b1;
 		X1 = out;
 		Y1 = filtered;
 		
-		delayBuffer[index] = tanh(in1[i] + (filtered * feedback)); // write new sample to delay buff, mix in feedbackk
+		clipped = in1[i] + (filtered * feedback * 1.25);
+		if (clipped > 1.0) {
+			clipped = 1.0;
+		} 
+		if (clipped < -1.0){
+			clipped = -1.0;
+		}
+		
+		clipped = tanh(clipped);
+		
+		delayBuffer[index] = clipped; // write new sample to delay buff, mix in feedbackk
 		(*out1++) = (out + in1[i]) * 0.5; // write to output buffer
 		
 		if(index != maxDelayTime - 1){ // wrap write pointer if needed
