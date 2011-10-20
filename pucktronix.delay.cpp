@@ -11,12 +11,15 @@
 //-------------------------------------------------------------------------------------------------------
 
 #include "pucktronix.delay.h"
+#include <math.h>
 
 /*
 	todo:
-	variable delay time - interpolation (using two variables)
+	* variable delay time - interpolation (using two variables)
 	feedback filter
 	feedback saturation
+	feedback amount
+	wet/dry mix
 */
 
 //-------------------------------------------------------------------------------------------------------
@@ -27,7 +30,7 @@ AudioEffect* createEffectInstance (audioMasterCallback audioMaster)
 
 //-------------------------------------------------------------------------------------------------------
 PDelay::PDelay (audioMasterCallback audioMaster)
-: AudioEffectX (audioMaster, 1, 1)	// 1 program, 1 parameter only
+: AudioEffectX (audioMaster, 1, 3)	// 1 program, 1 parameter only
 {
 	setNumInputs (1);		// stereo in
 	setNumOutputs (1);		// stereo out
@@ -42,6 +45,11 @@ PDelay::PDelay (audioMasterCallback audioMaster)
 	index = 0;
 	delayTimeSeconds = 0.5;
 	endDelayTimeSeconds = 0.5;
+	X1 = 0;
+	X2 = 0;
+	Y1 = 0;
+	cutoffParam = 0.1;
+	feedbackParam = 0.5;
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -66,31 +74,91 @@ void PDelay::getProgramName (char* name)
 //-----------------------------------------------------------------------------------------
 void PDelay::setParameter (VstInt32 index, float value)
 {
-	endDelayTimeSeconds = value * 2;
+	switch (index) {
+		case kDelay:
+			endDelayTimeSeconds = value;
+			break;
+		case kFeedBack:
+			feedbackParam = value;
+			break;
+		case kFCutoff:
+			cutoffParam = value;
+			break;
+		default:
+			break;
+	}
 }
 
 //-----------------------------------------------------------------------------------------
 float PDelay::getParameter (VstInt32 index)
 {
-	return delayTimeSeconds * 0.5;
+	switch (index) {
+		case kDelay:
+			return delayTimeSeconds;
+			break;
+		case kFeedBack:
+			return feedbackParam;
+			break;
+		case kFCutoff:
+			return cutoffParam;
+			break;
+		default:
+			break;
+	}	
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::getParameterName (VstInt32 index, char* label)
 {
-	vst_strncpy (label, "Delay Time", kVstMaxParamStrLen);
+	switch (index) {
+		case kDelay:
+			vst_strncpy (label, "Delay Time", kVstMaxParamStrLen);
+			break;
+		case kFeedBack:
+			vst_strncpy (label, "Feedback", kVstMaxParamStrLen);
+			break;
+		case kFCutoff:
+			vst_strncpy (label, "Filter Cutoff", kVstMaxParamStrLen);
+			break;
+		default:
+			break;
+	}		
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::getParameterDisplay (VstInt32 index, char* text)
 {
-	float2string(delayTimeSeconds * 1000, text, kVstMaxParamStrLen);
+	switch (index) {
+		case kDelay:
+			float2string(delayTimeSeconds * 1000, text, kVstMaxParamStrLen);
+			break;
+		case kFeedBack:
+			float2string(feedbackParam, text, kVstMaxParamStrLen);
+			break;
+		case kFCutoff:
+			float2string(cutoffParam * 20000, text, kVstMaxParamStrLen);
+			break;
+		default:
+			break;
+	}		
 }
 
 //-----------------------------------------------------------------------------------------
 void PDelay::getParameterLabel (VstInt32 index, char* label)
 {
-	vst_strncpy (label, "ms", kVstMaxParamStrLen);
+	switch (index) {
+		case kDelay:
+			vst_strncpy (label, "ms", kVstMaxParamStrLen);
+			break;
+		case kFeedBack:
+			vst_strncpy (label, "%", kVstMaxParamStrLen);
+			break;
+		case kFCutoff:
+			vst_strncpy (label, "Hz", kVstMaxParamStrLen);
+			break;
+		default:
+			break;
+	}			
 }
 
 //------------------------------------------------------------------------
@@ -120,6 +188,10 @@ VstInt32 PDelay::getVendorVersion ()
 	return 1000; 
 }
 
+float PDelay::filter(float * sig){
+		
+}
+
 //-----------------------------------------------------------------------------------------
 void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -129,7 +201,18 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
  //   float* out2 = outputs[1];
 	
 	int maxDelayTime, readPointerInt;
-	float out, readPointerFloat, variableDelayTime, frac, next, variableEndDelayTime, delayTimeIncrement;
+	float out, filtered, readPointerFloat, variableDelayTime, frac, next, variableEndDelayTime, delayTimeIncrement;
+	float a0, a1, b1, w, Norm, cutoff;
+	float feedback;
+	
+	feedback = feedbackParam;
+	
+	cutoff = cutoffParam * 20000;
+	w = 2.0 * (8.0 * atan(1.0)) * SR;
+	cutoff *= 8.0 * atan(1.0);
+	Norm = 1.0f / (cutoff + w);
+	b1 = (w - cutoff) * Norm;
+	a0 = a1 = cutoff * Norm;
 	
 	variableDelayTime = delayTimeSeconds * SR; 
 	variableEndDelayTime = endDelayTimeSeconds * SR;
@@ -143,10 +226,10 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 	if(variableDelayTime > maxDelayTime) variableDelayTime = (float)maxDelayTime; // make sure delay time not too large for buffer
 
 	for(int i = 0; i < sampleFrames; i++){
+		/** pointer offset and wrap **/
 		readPointerFloat = index - variableDelayTime; // offset read pointer from write pointer
 		variableDelayTime += delayTimeIncrement;
 		if(variableDelayTime > maxDelayTime) variableDelayTime = (float)maxDelayTime; // make sure delay time not too large for buffer
-	
 		if(readPointerFloat >= 0){
 			if(readPointerFloat >= maxDelayTime){ // wrap around if pointer is out of bounds
 				readPointerFloat -= maxDelayTime;
@@ -155,6 +238,7 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 			readPointerFloat += maxDelayTime;
 		}
 		
+		/** check for wrap and interpolate to get next read value **/
 		readPointerInt = (int)readPointerFloat;
 		frac = readPointerFloat - readPointerInt; // get fractional portion of sample index
 		
@@ -164,9 +248,18 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 			next = delayBuffer[0];
 		}
 		
+		/** output and feedback code **/
 		out = delayBuffer[readPointerInt] + frac * (next - delayBuffer[readPointerInt]); // output interpolated value from delay line
-		delayBuffer[index] = in1[i] + out * 0.5; // write new sample to delay buff, mix in feedbackk
+		// filter 
+
+		
+		filtered = out * a0 + X1 * a1 + Y1 * b1;
+		X1 = out;
+		Y1 = filtered;
+		
+		delayBuffer[index] = tanh(in1[i] + (filtered * feedback)); // write new sample to delay buff, mix in feedbackk
 		(*out1++) = (out + in1[i]) * 0.5; // write to output buffer
+		
 		if(index != maxDelayTime - 1){ // wrap write pointer if needed
 			index++;
 		} else {

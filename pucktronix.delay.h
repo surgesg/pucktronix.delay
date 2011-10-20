@@ -16,6 +16,19 @@
 #include "public.sdk/source/vst2.x/audioeffectx.h"
 
 //-------------------------------------------------------------------------------------------------------
+
+enum
+{
+	// Global
+	kNumPrograms = 16,
+	
+	// Parameters Tags
+	kDelay = 0,
+	kFeedBack,
+	kFCutoff,
+	kNumParams
+};
+
 class PDelay : public AudioEffectX
 {
 public:
@@ -25,7 +38,8 @@ public:
 	// Processing
 	virtual void processReplacing (float** inputs, float** outputs, VstInt32 sampleFrames);
 	virtual void processDoubleReplacing (double** inputs, double** outputs, VstInt32 sampleFrames);
-
+	float filter(float * sig);
+	
 	// Program
 	virtual void setProgramName (char* name);
 	virtual void getProgramName (char* name);
@@ -49,6 +63,9 @@ protected:
 	float * delayBuffer;
 	int index; 
 	int SR;
+	float X1, X2, Y1;
+	float cutoffParam;
+	float feedbackParam;
 };
 
 #endif
