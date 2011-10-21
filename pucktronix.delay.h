@@ -60,10 +60,12 @@ protected:
 	float delayTimeSeconds;
 	float endDelayTimeSeconds;
 	char programName[kVstMaxProgNameLen + 1];
-	float * delayBuffer;
+	float * delayBufferL;
+	float * delayBufferR;
 	int index; 
 	int SR;
-	float X1, X2, Y1;
+	float X1L, X2L, Y1L;
+	float X1R, X2R, Y1R;
 	float cutoffParam;
 	float feedbackParam;
 };

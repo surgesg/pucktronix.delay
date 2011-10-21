@@ -41,13 +41,14 @@ PDelay::PDelay (audioMasterCallback audioMaster)
 	vst_strncpy (programName, "Default", kVstMaxProgNameLen);	// default program name
 	SR = getSampleRate();
 	if (SR == 0) SR = 44100;
-	delayBuffer = new float[2 * SR];
+	delayBufferL = new float[2 * SR];
+	delayBufferR = new float[2 * SR];
 	index = 0;
 	delayTimeSeconds = 0.5;
 	endDelayTimeSeconds = 0.5;
-	X1 = 0;
-	X2 = 0;
-	Y1 = 0;
+	X1L = X1R = 0;
+	X2L = X2R = 0;
+	Y1L = Y1R = 0;
 	cutoffParam = 0.1;
 	feedbackParam = 0.5;
 }
@@ -56,7 +57,8 @@ PDelay::PDelay (audioMasterCallback audioMaster)
 PDelay::~PDelay ()
 {
 	// nothing to do here
-	delete [] delayBuffer;
+	delete [] delayBufferL;
+	delete [] delayBufferR;
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -192,9 +194,9 @@ VstInt32 PDelay::getVendorVersion ()
 void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleFrames)
 {
     float* in1  =  inputs[0];
- //   float* in2  =  inputs[1];
+    float* in2  =  inputs[1];
     float* out1 = outputs[0];
- //   float* out2 = outputs[1];
+    float* out2 = outputs[1];
 	
 	int maxDelayTime, readPointerInt;
 	float out, filtered, readPointerFloat, variableDelayTime, frac, next, variableEndDelayTime, delayTimeIncrement;
@@ -240,18 +242,18 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 		frac = readPointerFloat - readPointerInt; // get fractional portion of sample index
 		
 		if(readPointerInt != maxDelayTime - 1){ // check read pointer for bounds and wrap
-			next = delayBuffer[readPointerInt + 1];
+			next = delayBufferL[readPointerInt + 1];
 		} else {
-			next = delayBuffer[0];
+			next = delayBufferL[0];
 		}
 		
 		/** output and feedback code **/
-		out = delayBuffer[readPointerInt] + frac * (next - delayBuffer[readPointerInt]); // output interpolated value from delay line
+		out = delayBufferL[readPointerInt] + frac * (next - delayBufferL[readPointerInt]); // output interpolated value from delay line
 		
 		// filter 
-		filtered = out * a0 + X1 * a1 + Y1 * b1;
-		X1 = out;
-		Y1 = filtered;
+		filtered = out * a0 + X1L * a1 + Y1L * b1;
+		X1L = out;
+		Y1L = filtered;
 		
 		clipped = in1[i] + (filtered * feedback * 1.25);
 		if (clipped > 1.0) {
@@ -263,8 +265,38 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 		
 		clipped = tanh(clipped);
 		
-		delayBuffer[index] = clipped; // write new sample to delay buff, mix in feedbackk
+		delayBufferL[index] = clipped; // write new sample to delay buff, mix in feedbackk
 		(*out1++) = (out + in1[i]) * 0.5; // write to output buffer
+		
+		/* if stereo, process right chan - this code duplicates the above, using delayBufferR instead */
+		if(in2 != NULL){
+			if(readPointerInt != maxDelayTime - 1){ // check read pointer for bounds and wrap
+				next = delayBufferR[readPointerInt + 1];
+			} else {
+				next = delayBufferR[0];
+			}
+			
+			/** output and feedback code **/
+			out = delayBufferR[readPointerInt] + frac * (next - delayBufferR[readPointerInt]); // output interpolated value from delay line
+			
+			// filter 
+			filtered = out * a0 + X1R * a1 + Y1R * b1;
+			X1R = out;
+			Y1R = filtered;
+			
+			clipped = in2[i] + (filtered * feedback * 1.25);
+			if (clipped > 1.0) {
+				clipped = 1.0;
+			} 
+			if (clipped < -1.0){
+				clipped = -1.0;
+			}
+			
+			clipped = tanh(clipped);
+			
+			delayBufferR[index] = clipped; // write new sample to delay buff, mix in feedbackk
+			(*out2++) = (out + in2[i]) * 0.5; // write to output buffer
+		}
 		
 		if(index != maxDelayTime - 1){ // wrap write pointer if needed
 			index++;
@@ -278,6 +310,7 @@ void PDelay::processReplacing (float** inputs, float** outputs, VstInt32 sampleF
 //-----------------------------------------------------------------------------------------
 void PDelay::processDoubleReplacing (double** inputs, double** outputs, VstInt32 sampleFrames)
 {
+	/*
     double* in1  =  inputs[0];
    // double* in2  =  inputs[1];
     double* out1 = outputs[0];
@@ -298,5 +331,5 @@ void PDelay::processDoubleReplacing (double** inputs, double** outputs, VstInt32
         (*out1++) = (*in1++) * dGain;
         (*out2++) = (*in2++) * dGain;
     }
- */
+	*/
 }
